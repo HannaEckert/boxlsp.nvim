@@ -23,18 +23,28 @@ fi
 classpath=""
 libs="$currentDirectory/lib"
 
-for jarFile in $(ls $libs); do
-	if [ "$classpath" != "" ] ; then
-		classpath="$classpath:"	
-	fi
 
-	classpath="$classpath$libs/$jarFile"
-done
+# The lsp shutdown is not yet implemented correctly, so we have to check 
+# if the lsp is already running and try to connect to this instance first.
 
-set +m
-java -classpath "$classpath" ortus.boxlanglsp.App >"$currentDirectory/lsp.log" 2>&1 &
-lspProcessId=$!
-set -m
+alreadyRunning=$(ps ax | grep -v grep | grep ortus.boxlanglsp.App | cut -d " " -f 2)
+if [ "x" = "x$alreadyRunning" ] ; then
+	for jarFile in $(ls $libs); do
+		if [ "$classpath" != "" ] ; then
+			classpath="$classpath:"	
+		fi
+
+		classpath="$classpath$libs/$jarFile"
+	done
+
+	set +m
+	java -classpath "$classpath" ortus.boxlanglsp.App >"$currentDirectory/lsp.log" 2>&1 &
+	lspProcessId=$!
+	set -m
+else
+	lspProcessId=$alreadyRunning
+fi
+
 
 # Wait up to 3 seconds for the server to open a port
 waitForLspStart() {
@@ -42,7 +52,7 @@ waitForLspStart() {
     local elapsed=0
 
     while (( $(echo "$elapsed < 3" | bc -l) )); do
-		local port=$(cat "$currentDirectory/lsp.log" | grep port | tail -n 1 | sed 's/.*port: \(.*\).*/\1/')
+		local port=$(cat "$currentDirectory/lsp.log" | grep "Listening on port:" | tail -n 1 | sed 's/.*port: \(.*\).*/\1/')
 		local started=$(cat "$currentDirectory/lsp.log" | grep "waiting for a connection")
 
 		if [[ -n "$started" && -n "$port" ]] ; then
