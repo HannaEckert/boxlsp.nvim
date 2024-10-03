@@ -5,6 +5,13 @@ currentDirectory=$(cd $(dirname "$0") >/dev/null 2>&1; pwd -P)
 MIN_JAVA_VERSION=21
 JAVA_VERSION=$(java -version 2>&1 | sed -n ';s/.* version "\(.*\)\..*\..*".*/\1/p;')
 
+# check if netcat is installed
+if ! command -v nc >/dev/null ; then
+	echo "Netcat (nc) needs to be installed to connect to the language server."
+	exit 1
+fi
+
+# Check the java version
 if (( $JAVA_VERSION < $MIN_JAVA_VERSION )) ; then
 	echo "This language server needs at least java v$MIN_JAVA_VERSION running." >/dev/stderr
 	echo "Installed java version: $JAVA_VERSION" >/dev/stderr
@@ -24,5 +31,36 @@ for jarFile in $(ls $libs); do
 	classpath="$classpath$libs/$jarFile"
 done
 
-java -classpath "$classpath" ortus.boxlanglsp.App
+set +m
+java -classpath "$classpath" ortus.boxlanglsp.App >"$currentDirectory/lsp.log" 2>&1 &
+lspProcessId=$!
+set -m
 
+# Wait up to 3 seconds for the server to open a port
+waitForLspStart() {
+    local interval=0.2
+    local elapsed=0
+
+    while (( $(echo "$elapsed < 3" | bc -l) )); do
+		local port=$(cat "$currentDirectory/lsp.log" | grep port | tail -n 1 | sed 's/.*port: \(.*\).*/\1/')
+		local started=$(cat "$currentDirectory/lsp.log" | grep "waiting for a connection")
+
+		if [[ -n "$started" && -n "$port" ]] ; then
+			echo $port
+			return
+		fi
+
+		sleep $interval
+        elapsed=$(echo "$elapsed + $interval" | bc)
+    done
+}
+
+port=$(waitForLspStart)
+if [ ! -n "$port" ] ; then
+	echo "Language server didn't start. Please check '$currentDirectory/lsp.log' for more info." >/dev/stderr
+	kill -9 $lspProcessId
+	exit 1
+fi
+
+# Turning the lsp server into a cli tool
+nc localhost $port
