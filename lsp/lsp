@@ -1,0 +1,28 @@
+#!/usr/bin/bash
+
+currentDirectory=$(cd $(dirname "$0") >/dev/null 2>&1; pwd -P)
+
+MIN_JAVA_VERSION=21
+JAVA_VERSION=$(java -version 2>&1 | sed -n ';s/.* version "\(.*\)\..*\..*".*/\1/p;')
+
+if (( $JAVA_VERSION < $MIN_JAVA_VERSION )) ; then
+	echo "This language server needs at least java v$MIN_JAVA_VERSION running." >/dev/stderr
+	echo "Installed java version: $JAVA_VERSION" >/dev/stderr
+	exit 1
+fi
+
+"$currentDirectory/update_libs.sh"
+
+classpath=""
+libs="$currentDirectory/lib"
+
+for jarFile in $(ls $libs); do
+	if [ "$classpath" != "" ] ; then
+		classpath="$classpath:"	
+	fi
+
+	classpath="$classpath$libs/$jarFile"
+done
+
+java -classpath "$classpath" ortus.boxlanglsp.App
+
